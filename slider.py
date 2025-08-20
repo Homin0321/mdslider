@@ -104,8 +104,7 @@ def main():
     
         # Tab 2: Rendered view of the entire markdown file
         with tab2:
-            st.text_area("E", processed_markdown, height=EDIT_AREA_HEIGHT, label_visibility="collapsed")
-            #st.markdown(processed_markdown, unsafe_allow_html=True)
+            st.markdown(processed_markdown, unsafe_allow_html=True)
     
         # Tab 3: Slideshow view
         with tab3:
