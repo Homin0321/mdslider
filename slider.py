@@ -280,10 +280,10 @@ def split_content(text):
     split_conditions = {
         "separator_page_length": (lambda x: split_by_lines(st.session_state.page_lines, x)),
         "separator_hr": (lambda x: split_by_regex(r'---\s*$', x)),
-        "separator_h1": (lambda x: split_by_regex(r'^# .*$, x)),
-        "separator_h2": (lambda x: split_by_regex(r'^## .*$, x)),
-        "separator_h3": (lambda x: split_by_regex(r'^### .*$, x)),
-        "separator_bold": (lambda x: split_by_regex(r'^\*\*(.*?)\*\*$, x)),
+        "separator_h1": (lambda x: split_by_regex(r'^# .*$', x)),
+        "separator_h2": (lambda x: split_by_regex(r'^## .*$', x)),
+        "separator_h3": (lambda x: split_by_regex(r'^### .*$', x)),
+        "separator_bold": (lambda x: split_by_regex(r'^\*\*(.*?)\*\*$', x)),
         "separator_after_image": (split_after_image)
     }
     
