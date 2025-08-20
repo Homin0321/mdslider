@@ -91,13 +91,17 @@ def main():
     
     # --- Main Content Area ---
     if st.session_state.last_uploaded_file_id:
-        # Process local image paths to be served from the specified URL
+        # First convert ![[file_name]] format to ![](file_name)
+        processed_markdown = re.sub(r'!\[\[(.*?)\]\]', r'![](\1)', st.session_state.markdown_content)
+        
+        # Then process local image paths to be served from the specified URL
         # Regex looks for ![alt](path) where path is not a web URL
-        processed_markdown = re.sub(r"!\[(.*?)\]\(((?!https?://).*?)\)", lambda m: replace_image_path(m, image_server_url), st.session_state.markdown_content)
+        processed_markdown = re.sub(r"!\[(.*?)\]\(((?!https?://).*?)\)", lambda m: replace_image_path(m, image_server_url), processed_markdown)
     
         # Main display tabs
         tab1, tab2, tab3 = st.tabs(["Source", "One Page", "Slides"])
-    
+
+
         # Tab 1: Raw Markdown Editor
         with tab1:
             st.text_area("Edit", key="markdown_content", height=EDIT_AREA_HEIGHT, label_visibility="collapsed")
