@@ -93,7 +93,7 @@ def main():
     if st.session_state.last_uploaded_file_id:
         # Process local image paths to be served from the specified URL
         # Regex looks for ![alt](path) where path is not a web URL
-        processed_markdown = re.sub(r"![(.*?)]((?!https?://)(.*?))", lambda m: replace_image_path(m, image_server_url), st.session_state.markdown_content)
+        processed_markdown = re.sub(r"!\[(.*?)\]\(((?!https?://).*?)\)", lambda m: replace_image_path(m, image_server_url), st.session_state.markdown_content)
     
         # Main display tabs
         tab1, tab2, tab3 = st.tabs(["Source", "One Page", "Slides"])
@@ -104,7 +104,8 @@ def main():
     
         # Tab 2: Rendered view of the entire markdown file
         with tab2:
-            st.markdown(processed_markdown, unsafe_allow_html=True)
+            st.text_area("E", processed_markdown, height=EDIT_AREA_HEIGHT, label_visibility="collapsed")
+            #st.markdown(processed_markdown, unsafe_allow_html=True)
     
         # Tab 3: Slideshow view
         with tab3:
@@ -260,7 +261,7 @@ def split_after_image(text: str) -> list[str]:
     for line in text.splitlines():
         current_part += line + "\n"
         # Split after a line containing markdown image syntax
-        if re.match(r"![(.*?)]((.*?))", line.strip()):
+        if re.match(r"!\[.*\]\(.*\)", line.strip()):
             parts.append(current_part)
             current_part = ""
     # Add any remaining content
