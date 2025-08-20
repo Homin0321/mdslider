@@ -25,12 +25,12 @@ def main():
     st.session_state.page_lines = st.session_state.get("page_lines", 20)
     # Flags for different slide separators
     st.session_state.separator_hr = st.session_state.get("separator_hr", True)
-    st.session_state.separator_h1 = st.session_state.get("separator_h1", True)
-    st.session_state.separator_h2 = st.session_state.get("separator_h2", True)
-    st.session_state.separator_h3 = st.session_state.get("separator_h3", True)
+    st.session_state.separator_h1 = st.session_state.get("separator_h1", False)
+    st.session_state.separator_h2 = st.session_state.get("separator_h2", False)
+    st.session_state.separator_h3 = st.session_state.get("separator_h3", False)
     st.session_state.separator_h4 = st.session_state.get("separator_h4", False)
     st.session_state.separator_bold = st.session_state.get("separator_bold", False)
-    st.session_state.separator_after_image = st.session_state.get("separator_after_image", True)
+    st.session_state.separator_after_image = st.session_state.get("separator_after_image", False)
     st.session_state.separator_page_length = st.session_state.get("separator_page_length", False)
     # Core content and file info
     st.session_state.markdown_content = st.session_state.get("markdown_content", "")
@@ -108,12 +108,20 @@ def main():
     
         # Tab 3: Slideshow view
         with tab3:
-            pages = split_content(processed_markdown)
-            index = make_index(pages)
-    
-            placeholder = st.empty()  # Placeholder for the current slide content
+            all_pages = split_content(processed_markdown)
+            index, pages = make_index(all_pages)  # Now returns both index and valid pages
+            
+            if not pages:  # Check if there are any valid pages
+                st.warning("No valid content pages found.")
+                return
+                
+            placeholder = st.empty()
             st.divider()
-    
+            
+            # Ensure current_page is within valid range
+            if st.session_state.current_page >= len(pages):
+                st.session_state.current_page = 0
+                
             # --- Slide Navigation Controls ---
             col1, col2, col3, col4, col5 = st.columns([1, 1, 8, 1, 1])
     
@@ -166,6 +174,7 @@ def main():
 def split_by_regex(regex: str, text: str) -> list[str]:
     """
     Splits a text by a given regex pattern, avoiding splits inside code blocks or tables.
+    If splitting by horizontal rule ('---'), excludes the separator from the output.
     """
     parts = []
     current_part = ""
@@ -183,19 +192,32 @@ def split_by_regex(regex: str, text: str) -> list[str]:
             if not in_table:
                 in_table = True
             table_content += line + "\n"
+            continue  # Skip adding table line to current_part
         elif in_table and not line.strip():
             in_table = False
-            current_part += table_content
+            current_part += table_content  # Add complete table at once
             table_content = ""
+            continue  # Skip adding empty line after table
         
-        # Split if the line matches the regex and is not inside a code block or table
-        if re.match(regex, line) and not in_code_block and not in_table:
+        # Skip if still collecting table content
+        if in_table:
+            table_content += line + "\n"
+            continue
+        
+        # Split if the line matches the regex and is not inside a code block
+        if re.match(regex, line) and not in_code_block:
             if current_part:
                 parts.append(current_part)
                 current_part = ""
-            current_part += line + "\n"
+            # Only add the separator line if it's not a horizontal rule
+            if not re.match(r'---\s*$', line):
+                current_part += line + "\n"
         else:
             current_part += line + "\n"
+    
+    # Add any remaining table content
+    if table_content:
+        current_part += table_content
     
     # Add the last remaining part
     if current_part:
@@ -410,14 +432,26 @@ def make_index(pages):
     """
     Creates a table of contents from the list of pages.
     The first line of each page is used as the index entry.
+    Skips pages that are empty or contain only separators.
     """
     index = []
-    for i, page in enumerate(pages):
-        # Get the first line and clean it up for the index
-        first_line = remove_decorators(page.strip().split('\n')[0])
-        first_line = f"{i+1}. {first_line}"
-        index.append(first_line)
-    return index
+    valid_pages = []
+    
+    for page in pages:
+        # Skip if page is empty or contains only whitespace/separators
+        page_content = page.strip()
+        if not page_content or page_content in ['---', '----', '-----']:
+            continue
+            
+        # Get the first non-empty line and clean it up for the index
+        lines = [line for line in page.split('\n') if line.strip()]
+        if lines:
+            first_line = remove_decorators(lines[0].strip())
+            first_line = f"{len(valid_pages)+1}. {first_line}"
+            index.append(first_line)
+            valid_pages.append(page)
+            
+    return index, valid_pages
 
 
 # --- Main Execution ---
