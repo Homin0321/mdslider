@@ -2,14 +2,171 @@ import streamlit as st
 import re
 import os
 
-# 파일 상단에 추가
-DEFAULT_PAGE_LINES = 20
-DEFAULT_IMAGE_SERVER = "http://127.0.0.1:8080/"
-MARKDOWN_FILE_TYPES = ["md"]
+# --- Constants ---
+DEFAULT_PAGE_LINES = 20  # Default number of lines per page for splitting
+EDIT_AREA_HEIGHT = 600  # Height of the markdown editor text area
+DEFAULT_IMAGE_SERVER = "http://127.0.0.1:8080/"  # Default URL for the local image server
+MARKDOWN_FILE_TYPES = ["md"]  # Allowed file types for upload
 
-st.set_page_config(layout="wide")
+# --- Streamlit Page Configuration ---
+st.set_page_config(page_title="Markdown Slider", page_icon="📄", layout="wide")
+
+
+def main():
+    """
+    Main function to run the Streamlit application.
+    Initializes session state and lays out the UI components.
+    """
+    # --- Session State Initialization ---
+    # Initialize session state variables to preserve state across reruns.
+    st.session_state.text = st.session_state.get("text", "")
+    st.session_state.current_page = st.session_state.get("current_page", 0)
+    st.session_state.separator = st.session_state.get("separator", "Page length")
+    st.session_state.page_lines = st.session_state.get("page_lines", 20)
+    # Flags for different slide separators
+    st.session_state.separator_hr = st.session_state.get("separator_hr", True)
+    st.session_state.separator_h1 = st.session_state.get("separator_h1", True)
+    st.session_state.separator_h2 = st.session_state.get("separator_h2", True)
+    st.session_state.separator_h3 = st.session_state.get("separator_h3", True)
+    st.session_state.separator_h4 = st.session_state.get("separator_h4", False)
+    st.session_state.separator_bold = st.session_state.get("separator_bold", False)
+    st.session_state.separator_after_image = st.session_state.get("separator_after_image", True)
+    st.session_state.separator_page_length = st.session_state.get("separator_page_length", False)
+    # Core content and file info
+    st.session_state.markdown_content = st.session_state.get("markdown_content", "")
+    st.session_state.last_uploaded_file_id = st.session_state.get("last_uploaded_file_id", None)
+    st.session_state.file_name = st.session_state.get("file_name", None)
+    st.session_state.file_save_path = st.session_state.get("file_save_path", os.getcwd())
+    
+    # --- Sidebar UI ---
+    with st.sidebar:
+        st.title("Markdown Slider")
+        
+        # Button to create a new, empty file
+        if st.button("New File", use_container_width=True):
+            st.session_state.markdown_content = ""
+            st.session_state.last_uploaded_file_id = "new_file"
+            st.session_state.file_name = "untitled.md"
+            resplit()
+
+        # File uploader for markdown files
+        uploaded_md_file = st.file_uploader(
+            "Open Markdown file",
+            type=["md"]
+        )
+    
+        # Process uploaded file
+        if uploaded_md_file:
+            # Check if a new file has been uploaded
+            if st.session_state.get('last_uploaded_file_id') != uploaded_md_file.file_id:
+                st.session_state.markdown_content = uploaded_md_file.getvalue().decode("utf-8")
+                st.session_state.last_uploaded_file_id = uploaded_md_file.file_id
+                st.session_state.file_name = uploaded_md_file.name
+                resplit()
+    
+        # File operations (Save) appear only if a file is loaded or new
+        if st.session_state.last_uploaded_file_id:
+            st.text_input("Filename", key="file_name")
+            if st.button("Save File", use_container_width=True):
+                try:
+                    save_path = os.path.join(st.session_state.file_save_path, st.session_state.file_name)
+                    os.makedirs(st.session_state.file_save_path, exist_ok=True)
+                    with open(save_path, "w", encoding="utf-8") as f:
+                        f.write(st.session_state.markdown_content)
+                    st.success(f"Saved to {save_path}")
+                except Exception as e:
+                    st.error(f"Failed to save file: {e}")
+    
+        # Input for setting the file save path
+        st.text_input(
+            "File Save Path",
+            key="file_save_path"
+        )
+    
+        # Input for the image server URL
+        image_server_url = st.text_input(
+            "Image Server URL",
+            "http://127.0.0.1:8080/"
+        )
+    
+    # --- Main Content Area ---
+    if st.session_state.last_uploaded_file_id:
+        # Process local image paths to be served from the specified URL
+        # Regex looks for ![alt](path) where path is not a web URL
+        processed_markdown = re.sub(r"![(.*?)]((?!https?://)(.*?))", lambda m: replace_image_path(m, image_server_url), st.session_state.markdown_content)
+    
+        # Main display tabs
+        tab1, tab2, tab3 = st.tabs(["Source", "One Page", "Slides"])
+    
+        # Tab 1: Raw Markdown Editor
+        with tab1:
+            st.text_area("Edit", key="markdown_content", height=EDIT_AREA_HEIGHT, label_visibility="collapsed")
+    
+        # Tab 2: Rendered view of the entire markdown file
+        with tab2:
+            st.markdown(processed_markdown, unsafe_allow_html=True)
+    
+        # Tab 3: Slideshow view
+        with tab3:
+            pages = split_content(processed_markdown)
+            index = make_index(pages)
+    
+            placeholder = st.empty()  # Placeholder for the current slide content
+            st.divider()
+    
+            # --- Slide Navigation Controls ---
+            col1, col2, col3, col4, col5 = st.columns([1, 1, 8, 1, 1])
+    
+            with col1: # Previous button
+                if st.button("◀", use_container_width=True):
+                    if st.session_state.current_page == 0:
+                        st.session_state.current_page = len(pages)-1
+                    else:
+                        st.session_state.current_page -= 1
+    
+            with col2: # Next button
+                if st.button("▶", use_container_width=True):
+                    if st.session_state.current_page == len(pages)-1:
+                        st.session_state.current_page = 0
+                    else:
+                        st.session_state.current_page += 1
+    
+            with col3: # Page slider
+                slider = st.empty()
+    
+            with col4: # Jump to page (index) button
+                if st.button("Jump", use_container_width=True):
+                    show_index(index)
+    
+            with col5: # Splitting options popover
+                with st.popover("Split"):
+                    st.checkbox(r"\---", key="separator_hr", on_change=resplit)
+                    st.checkbox(r"\#", key="separator_h1", on_change=resplit)
+                    st.checkbox(r"\##", key="separator_h2", on_change=resplit)
+                    st.checkbox(r"\###", key="separator_h3", on_change=resplit)
+                    st.checkbox(r"\####", key="separator_h4", on_change=resplit)
+                    st.checkbox(r"\*\* ~ \*\*", key="separator_bold", on_change=resplit)
+                    st.checkbox("After image", key="separator_after_image", on_change=resplit)
+                    st.checkbox("Page length", key="separator_page_length", on_change=resplit)
+                    st.slider("Select page length", min_value=1, max_value=30, key="page_lines", on_change=resplit)
+    
+            # Display the slider if there is more than one page
+            if len(pages) > 1:
+                slider.slider("Go to", min_value=1, max_value=len(pages),
+                                value=st.session_state.current_page + 1,
+                                key="page_slider",
+                                on_change=update_slider,
+                                label_visibility="collapsed")
+    
+            # Display the content of the current slide
+            slide_content = pages[st.session_state.current_page]
+            placeholder.markdown(slide_content, unsafe_allow_html=True)
+
 
 def split_by_regex(regex: str, text: str) -> list[str]:
+    """
+    Splits a text by a given regex pattern, avoiding splits inside code blocks or tables.
+    """
     parts = []
     current_part = ""
     in_code_block = False
@@ -17,11 +174,11 @@ def split_by_regex(regex: str, text: str) -> list[str]:
     table_content = ""
     
     for line in text.splitlines():
-        # Check for code block
+        # Toggle code block state
         if line.strip().startswith('```'):
             in_code_block = not in_code_block
         
-        # Check for table
+        # Detect table content to treat it as a single block
         if line.strip().startswith('|') or line.strip().startswith('+-'):
             if not in_table:
                 in_table = True
@@ -31,7 +188,7 @@ def split_by_regex(regex: str, text: str) -> list[str]:
             current_part += table_content
             table_content = ""
         
-        # Handle splitting
+        # Split if the line matches the regex and is not inside a code block or table
         if re.match(regex, line) and not in_code_block and not in_table:
             if current_part:
                 parts.append(current_part)
@@ -40,13 +197,17 @@ def split_by_regex(regex: str, text: str) -> list[str]:
         else:
             current_part += line + "\n"
     
-    # Add any remaining content
+    # Add the last remaining part
     if current_part:
         parts.append(current_part)
     
     return parts
 
 def split_by_lines(num: int, text: str) -> list[str]:
+    """
+    Splits a text into chunks of a specified number of lines.
+    Avoids splitting within code blocks, tables, or right before a heading.
+    """
     parts = []
     lines = text.splitlines()
     
@@ -56,11 +217,11 @@ def split_by_lines(num: int, text: str) -> list[str]:
     chunk_line_count = 0
     
     for line in lines:
-        # Check if line starts or ends a code block
+        # Toggle code block state
         if line.strip().startswith('```'):
             in_code_block = not in_code_block
         
-        # Check if line is part of a markdown table
+        # Detect table content
         if line.strip().startswith('|') or line.strip().startswith('+-'):
             in_table = True
         elif in_table and not line.strip():
@@ -69,22 +230,22 @@ def split_by_lines(num: int, text: str) -> list[str]:
         current_chunk.append(line)
         chunk_line_count += 1
         
-        # Only split when we're not in a table or code block and have reached the line limit
+        # Split if line limit is reached and not inside a special block
         if chunk_line_count >= num and not in_table and not in_code_block:
             chunk_text = '\n'.join(current_chunk) + '\n'
             
-            # If the last line is a heading, split before it
+            # If the last line is a heading, split before it to keep it with its content
             if is_markdown_heading(current_chunk[-1]):
                 split_chunks = split_at_last_heading(chunk_text)
-                parts.extend(split_chunks[:-1])  # Add all but the last chunk
-                current_chunk = [split_chunks[-1].strip()]  # Start new chunk with the heading
+                parts.extend(split_chunks[:-1])
+                current_chunk = [split_chunks[-1].strip()]
             else:
                 parts.append(chunk_text)
                 current_chunk = []
             
             chunk_line_count = len(current_chunk)
     
-    # Add any remaining lines
+    # Add any remaining lines as the last part
     if current_chunk:
         parts.append('\n'.join(current_chunk) + '\n')
     
@@ -92,14 +253,14 @@ def split_by_lines(num: int, text: str) -> list[str]:
 
 def split_after_image(text: str) -> list[str]:
     """
-    Splits the text into pages after each image markdown syntax.
+    Splits the text into pages immediately after each image.
     """
     parts = []
     current_part = ""
     for line in text.splitlines():
         current_part += line + "\n"
-        # Check if the line contains an image markdown syntax
-        if re.match(r"!\[.*?\]\(.*?\)", line.strip()):
+        # Split after a line containing markdown image syntax
+        if re.match(r"![(.*?)]((.*?))", line.strip()):
             parts.append(current_part)
             current_part = ""
     # Add any remaining content
@@ -109,39 +270,56 @@ def split_after_image(text: str) -> list[str]:
 
 @st.cache_data
 def split_content(text):
+    """
+    Splits the markdown text into a list of pages based on selected criteria.
+    Uses caching to improve performance.
+    """
     parts = [text]
     
-    # 분할 조건을 딕셔너리로 관리
+    # Dictionary mapping session state keys to splitting functions
     split_conditions = {
         "separator_page_length": (lambda x: split_by_lines(st.session_state.page_lines, x)),
-        "separator_hr": (lambda x: split_by_regex(r'---\s*$', x)),
-        "separator_h1": (lambda x: split_by_regex(r'^# .*$', x)),
-        "separator_h2": (lambda x: split_by_regex(r'^## .*$', x)),
-        "separator_h3": (lambda x: split_by_regex(r'^### .*$', x)),
-        "separator_bold": (lambda x: split_by_regex(r'^\*\*(.*?)\*\*$', x)),
+        "separator_hr": (lambda x: split_by_regex(r'---\s*
+, x)),
+        "separator_h1": (lambda x: split_by_regex(r'^# .*
+, x)),
+        "separator_h2": (lambda x: split_by_regex(r'^## .*
+, x)),
+        "separator_h3": (lambda x: split_by_regex(r'^### .*
+, x)),
+        "separator_bold": (lambda x: split_by_regex(r'^\*\*(.*?)\*\*
+, x)),
         "separator_after_image": (split_after_image)
     }
     
+    # Apply each selected splitting function sequentially
     for separator, split_func in split_conditions.items():
         if st.session_state.get(separator, False):
+            # Flatten the list of parts after each split
             parts = [part for page in parts for part in split_func(page)]
     
     return parts if len(parts) > 1 else [text]
 
 def resplit():
-    # Clear the current page when changing separators
+    """
+    Callback function to reset the page and clear caches when splitting options change.
+    """
     st.session_state.current_page = 0
-    # Clear the cached split content to force a recalculation
     split_content.clear()
 
 def update_slider():
+    """
+    Callback function to update the current page when the navigation slider is moved.
+    """
     page = st.session_state.page_slider -1
     if page != st.session_state.current_page:
         st.session_state.current_page = page
 
 @st.cache_data
 def is_markdown_heading(line):
-    # Check if line is a markdown heading (level 1, 2, or 3)
+    """
+    Checks if a line is a markdown heading (levels 1-4).
+    """
     stripped_line = line.strip()
     return (
             stripped_line.startswith('#') or 
@@ -150,15 +328,19 @@ def is_markdown_heading(line):
             stripped_line.startswith('####'))
 
 def split_at_last_heading(text):
+    """
+    Finds the last heading in a chunk of text and splits the text before it.
+    This prevents a heading from being the last line of a page.
+    """
     lines = text.splitlines()
     last_heading_index = -1
     
-    # Find the last heading in the text
+    # Find the index of the last heading
     for i, line in enumerate(lines):
         if is_markdown_heading(line):
             last_heading_index = i
     
-    # If a heading was found and it's not the first line
+    # If a heading is found and it's not the first line, split the text
     if last_heading_index > 0:
         part1 = '\n'.join(lines[:last_heading_index]) + '\n'
         part2 = '\n'.join(lines[last_heading_index:]) + '\n'
@@ -168,32 +350,52 @@ def split_at_last_heading(text):
 
 @st.cache_data
 def remove_decorators(text):
-    # Remove leading hashes
+    """
+    Removes markdown decorators (like #, **) from a line for a cleaner index display.
+    """
     text = text.lstrip('#')
-
-    # Remove bold formatting
     text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
-
-    # Remove trailing colon
     if text.endswith(':'):
         text = text[:-1]
-
     return text
 
 def find_index(lst, target):
-    # Finds the index of a target item in a list
-    for i, str in enumerate(lst):
-        if str == target:
+    """
+    Finds the index of a target item in a list.
+    """
+    for i, str_item in enumerate(lst):
+        if str_item == target:
             return i
     return -1
 
+def replace_image_path(match, base_url):
+    """
+    Rewrites local image paths to point to the specified image server URL.
+    Used as a callback for re.sub().
+    """
+    alt_text = match.group(1)
+    original_path = match.group(2)
+    try:
+        image_filename = os.path.basename(original_path)
+        base_url = base_url if base_url.endswith('/') else base_url + '/'
+        new_url = f"{base_url}{image_filename}"
+        return f"![{alt_text}]({new_url})"
+    except Exception as e:
+        st.error(f"Error processing image path {original_path}: {e}")
+        return match.group(0)  # Return original string on error
+
 @st.dialog("Page Index", width="large")
 def show_index(toc):
+    """
+    Displays a dialog with a table of contents (TOC) for jumping to specific pages.
+    """
     idx = st.session_state.current_page
     
+    # Function to format TOC items for better display
     def format_func(item):
         return item[:60] + ("..." if len(item) > 60 else "")
 
+    # Radio button list for page selection
     selected = st.radio(
         "Contents:",
         toc,
@@ -201,6 +403,7 @@ def show_index(toc):
         format_func=format_func,
         label_visibility="collapsed"
     )
+    # If a new page is selected, update the state and rerun
     if selected is not None:
         idx = find_index(toc, selected)
         if idx != -1 and st.session_state.current_page != idx:
@@ -209,129 +412,19 @@ def show_index(toc):
 
 @st.cache_data
 def make_index(pages):
+    """
+    Creates a table of contents from the list of pages.
+    The first line of each page is used as the index entry.
+    """
     index = []
     for i, page in enumerate(pages):
+        # Get the first line and clean it up for the index
         first_line = remove_decorators(page.strip().split('\n')[0])
         first_line = f"{i+1}. {first_line}"
         index.append(first_line)
     return index
 
 
-# Main
-st.session_state.text = st.session_state.get("text", "")
-st.session_state.current_page = st.session_state.get("current_page", 0)
-st.session_state.separator = st.session_state.get("separator", "Page length")
-st.session_state.page_lines = st.session_state.get("page_lines", 20)
-st.session_state.separator_hr = st.session_state.get("separator_hr", True)
-st.session_state.separator_h1 = st.session_state.get("separator_h1", False)
-st.session_state.separator_h2 = st.session_state.get("separator_h2", False)
-st.session_state.separator_h3 = st.session_state.get("separator_h3", False)
-st.session_state.separator_h4 = st.session_state.get("separator_h4", False)
-st.session_state.separator_bold = st.session_state.get("separator_bold", False)
-st.session_state.separator_after_image = st.session_state.get("separator_after_image", True)
-st.session_state.separator_page_length = st.session_state.get("separator_page_length", True)
-st.session_state.markdown_content = st.session_state.get("markdown_content", "")
-st.session_state.last_uploaded_file_id = st.session_state.get("last_uploaded_file_id", None)
-
-with st.sidebar:
-    st.title("Markdown Viewer")
-    uploaded_md_file = st.file_uploader(
-        "Open Markdown file",
-        type=["md"]
-    )
-    image_server_url = st.text_input(
-        "Image Server URL",
-        "http://127.0.0.1:8080/"
-    )
-
-if uploaded_md_file:
-    if st.session_state.get('last_uploaded_file_id') != uploaded_md_file.file_id:
-        st.session_state.markdown_content = uploaded_md_file.getvalue().decode("utf-8")
-        st.session_state.last_uploaded_file_id = uploaded_md_file.file_id
-
-    def validate_image_url(url):
-        if not url:
-            return "http://127.0.0.1:8080/"
-        try:
-            from urllib.parse import urlparse
-            result = urlparse(url)
-            return url if all([result.scheme, result.netloc]) else "http://127.0.0.1:8080/"
-        except:
-            return "http://127.0.0.1:8080/"
-
-    def replace_image_path(match, base_url):
-        alt_text = match.group(1)
-        original_path = match.group(2)
-        try:
-            image_filename = os.path.basename(original_path)
-            base_url = base_url if base_url.endswith('/') else base_url + '/'
-            new_url = f"{base_url}{image_filename}"
-            return f"![{alt_text}]({new_url})"
-        except Exception as e:
-            st.error(f"Error processing image path {original_path}: {e}")
-            return match.group(0)  # Return the original match to avoid breaking the markdown
-
-    # Regex to find local image markdown syntax: ![alt text](path)
-    # (?!https?:\\/\/) ensures it's not a web URL
-    processed_markdown = re.sub(r"!\[(.*?)\]\((?!https?://)(.*?)\)", lambda m: replace_image_path(m, image_server_url), st.session_state.markdown_content)
-
-    tab1, tab2, tab3 = st.tabs(["Source", "One Page", "Slides"])
-
-    with tab1:
-        st.text_area("Edit", key="markdown_content", height=600, label_visibility="collapsed")
-
-    with tab2:
-        st.markdown(processed_markdown, unsafe_allow_html=True)
-
-    with tab3:
-        pages = split_content(processed_markdown)
-        index = make_index(pages)
-
-        placeholder = st.empty()
-        st.divider()
-
-        col1, col2, col3, col4, col5 = st.columns([1, 1, 8, 1, 1])
-
-        with col1:
-            if st.button("◀", use_container_width=True):
-                if st.session_state.current_page == 0:
-                    st.session_state.current_page = len(pages)-1
-                else:
-                    st.session_state.current_page -= 1
-
-        with col2:
-            if st.button("▶", use_container_width=True):
-                if st.session_state.current_page == len(pages)-1:
-                    st.session_state.current_page = 0
-                else:
-                    st.session_state.current_page += 1
-
-        with col3:
-            slider = st.empty()
-
-        with col4:
-            if st.button("Jump", use_container_width=True):
-                show_index(index)
-
-        with col5:
-            with st.popover("Split"):
-                st.checkbox(r"\---", key="separator_hr", on_change=resplit)
-                st.checkbox(r"\#", key="separator_h1", on_change=resplit)
-                st.checkbox(r"\##", key="separator_h2", on_change=resplit)
-                st.checkbox(r"\###", key="separator_h3", on_change=resplit)
-                st.checkbox(r"\####", key="separator_h4", on_change=resplit)
-                st.checkbox(r"\** ~ **", key="separator_bold", on_change=resplit)
-                st.checkbox("After image", key="separator_after_image", on_change=resplit)
-                st.checkbox("Page length", key="separator_page_length", on_change=resplit)
-                st.slider("Select page length", min_value=1, max_value=30, key="page_lines", on_change=resplit)
-
-        if len(pages) > 1:
-            slider.slider("Go to", min_value=1, max_value=len(pages),
-                            value=st.session_state.current_page + 1,
-                            key="page_slider",
-                            on_change=update_slider,
-                            label_visibility="collapsed")
-
-        slide_content = pages[st.session_state.current_page]
-
-        placeholder.markdown(slide_content, unsafe_allow_html=True)
+# --- Main Execution ---
+if __name__ == "__main__":
+    main()

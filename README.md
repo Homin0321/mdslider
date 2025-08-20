@@ -1,21 +1,21 @@
 # Markdown Slider
 
-A Streamlit application to view Markdown files as a slideshow presentation.
+A Streamlit application to create, edit, and view Markdown files as a slideshow presentation.
 
 ## Features
 
-- Upload Markdown files (`.md`).
-- View the original Markdown source in an editable text area.
-- View the fully rendered Markdown on a single page.
-- Present the Markdown as a slideshow with navigation controls.
-- Dynamically split slides based on various separators:
+- **File Operations**: Create a new file, upload an existing Markdown file (`.md`), and save your work.
+- **Live Editor**: View the original Markdown source in an editable text area.
+- **Full Page View**: See the fully rendered Markdown on a single, scrollable page.
+- **Slideshow Mode**: Present the Markdown as a slideshow with easy-to-use navigation controls.
+- **Dynamic Slide Splitting**: Dynamically split slides based on various separators, which can be combined:
   - Horizontal Rules (`---`)
   - Headings (H1, H2, H3, H4)
   - Bold text (`**...**`)
   - After an image
   - By a specified number of lines
-- "Jump to" feature to quickly navigate to any slide using a generated table of contents.
-- Automatically rewrites local image paths to point to a local image server for correct display.
+- **Quick Navigation**: Use the "Jump to" feature to quickly navigate to any slide via a generated table of contents.
+- **Local Image Support**: Automatically rewrites local image paths to point to a local image server for correct display in the presentation.
 
 ## How to Run
 
@@ -46,8 +46,12 @@ A Streamlit application to view Markdown files as a slideshow presentation.
 ## How to Use
 
 1.  Open the web browser to the local URL provided by Streamlit (usually `http://localhost:8501`).
-2.  Use the sidebar to upload your Markdown file.
-3.  If you are using local images, ensure your image server is running and the URL in the sidebar is correct.
+2.  Use the sidebar to perform file operations:
+    - Click **New File** to start with a blank document.
+    - Click **Open Markdown file** to upload a file from your computer.
+    - Once a file is loaded, you can edit the **Filename** and **File Save Path**.
+    - Click **Save File** to save the current content of the editor to the specified path.
+3.  If you are using local images, ensure your image server is running and the **Image Server URL** in the sidebar is correct.
 4.  Navigate between the **Source**, **One Page**, and **Slides** tabs.
 5.  In the **Slides** tab:
     - Use the **◀** and **▶** buttons to move between slides.
