@@ -5,7 +5,8 @@ A Streamlit application to create, edit, and view Markdown files as a slideshow 
 ## Features
 
 - **File Operations**: Create a new file, upload an existing Markdown file (`.md`), and save your work.
-- **Live Editor**: View the original Markdown source in an editable text area.
+- **Command-Line Loading**: Open a file directly when starting the app (`streamlit run slider.py <file_path>`).
+- **Live Editor**: View and edit the raw Markdown source.
 - **Full Page View**: See the fully rendered Markdown on a single, scrollable page.
 - **Slideshow Mode**: Present the Markdown as a slideshow with easy-to-use navigation controls.
 - **Dynamic Slide Splitting**: Dynamically split slides based on various separators, which can be combined:
@@ -15,46 +16,43 @@ A Streamlit application to create, edit, and view Markdown files as a slideshow 
   - After an image
   - By a specified number of lines
 - **Quick Navigation**: Use the "Jump to" feature to quickly navigate to any slide via a generated table of contents.
-- **Local Image Support**: Automatically rewrites local image paths to point to a local image server for correct display in the presentation.
+- **Integrated Image Server**: Automatically serves local images for correct display in the presentation. No need to run a separate server.
+- **Obsidian-style Images**: Supports `![[image.png]]` syntax for embedding images.
 
-## How to Run
+## How to Run and Use
 
 1.  **Install Dependencies:**
-    Open your terminal and install the necessary Python package from `requirements.txt`.
+    Open your terminal and install the necessary Python packages from `requirements.txt`.
 
     ```bash
     pip install -r requirements.txt
     ```
 
-2.  **Run the Image Server (If using local images):**
-    For images with local paths in your Markdown file (e.g., `![alt](./images/pic.png)`), you need to run a local HTTP server in the directory where your images are stored.
-
-    Navigate to your image directory in the terminal and run:
-
-    ```bash
-    python -m http.server 8080
-    ```
-    The application defaults to using `http://127.0.0.1:8080/` as the image server base URL. You can change this in the application's sidebar.
-
-3.  **Run the Application:**
+2.  **Run the Application:**
     In your terminal, navigate to the project directory and run the Streamlit app.
 
+    *To start with an empty editor:*
     ```bash
     streamlit run slider.py
     ```
 
-## How to Use
+    *To open a specific file:*
+    ```bash
+    streamlit run slider.py "path/to/your/file.md"
+    ```
 
-1.  Open the web browser to the local URL provided by Streamlit (usually `http://localhost:8501`).
-2.  Use the sidebar to perform file operations:
-    - Click **New File** to start with a blank document.
-    - Click **Open Markdown file** to upload a file from your computer.
-    - Once a file is loaded, you can edit the **Filename** and **File Save Path**.
-    - Click **Save File** to save the current content of the editor to the specified path.
-3.  If you are using local images, ensure your image server is running and the **Image Server URL** in the sidebar is correct.
-4.  Navigate between the **Source**, **One Page**, and **Slides** tabs.
-5.  In the **Slides** tab:
-    - Use the **◀** and **▶** buttons to move between slides.
-    - Use the slider to navigate to a specific slide number.
-    - Click the **Jump** button to open a table of contents and go directly to a slide.
-    - Click the **Split** button (in the popover) to customize how the slides are divided. Changes are applied instantly.
+3.  **Using the App:**
+    - The application will open in your web browser.
+    - Use the sidebar to **New File**, **Open Markdown file**, or **Save File**.
+    - The filename and save path can be edited in the sidebar.
+
+4.  **Displaying Local Images:**
+    - When you open a file, the app automatically starts a server in the file's directory to display images.
+    - You can manually set the **Image Directory** in the sidebar and click **Start/Restart Image Server**.
+    - The app supports standard Markdown image syntax (`![](path/to/image.png)`) and Obsidian-style links (`![[image.png]]`).
+
+5.  **Navigating Slides:**
+    - Go to the **Slides** tab.
+    - Use the **◀** and **▶** buttons or the slider to move between slides.
+    - Click the **Jump** button to open a table of contents for quick navigation.
+    - Use the **Split** popover to customize how the content is divided into slides. Changes are applied instantly.

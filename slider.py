@@ -1,16 +1,30 @@
 import streamlit as st
 import re
 import os
-
-# --- Constants ---
-DEFAULT_PAGE_LINES = 20  # Default number of lines per page for splitting
-EDIT_AREA_HEIGHT = 600  # Height of the markdown editor text area
-DEFAULT_IMAGE_SERVER = "http://127.0.0.1:8080/"  # Default URL for the local image server
-MARKDOWN_FILE_TYPES = ["md"]  # Allowed file types for upload
+import sys
+import threading
+import http.server
+import socketserver
+from urllib.parse import quote
 
 # --- Streamlit Page Configuration ---
 st.set_page_config(page_title="Markdown Slider", page_icon="📄", layout="wide")
 
+def find_free_port():
+    with socketserver.TCPServer(("localhost", 0), None) as s:
+        return s.server_address[1]
+
+def start_server(path, port):
+    class Handler(http.server.SimpleHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, directory=path, **kwargs)
+
+        def translate_path(self, path):
+            # Decode URL-encoded paths
+            return super().translate_path(quote(path))
+
+    with socketserver.TCPServer(("", port), Handler) as httpd:
+        httpd.serve_forever()
 
 def main():
     """
@@ -37,7 +51,46 @@ def main():
     st.session_state.last_uploaded_file_id = st.session_state.get("last_uploaded_file_id", None)
     st.session_state.file_name = st.session_state.get("file_name", None)
     st.session_state.file_save_path = st.session_state.get("file_save_path", os.getcwd())
-    
+    st.session_state.image_directory = st.session_state.get("image_directory", os.getcwd())
+
+    # --- Server Management ---
+    if 'server_thread' not in st.session_state:
+        st.session_state.server_thread = None
+    if 'server_port' not in st.session_state:
+        st.session_state.server_port = None
+
+    # --- Load file from command line argument ---
+    if 'cli_file_loaded' not in st.session_state:
+        if len(sys.argv) > 1:
+            file_path = sys.argv[1]
+            if os.path.isfile(file_path):
+                try:
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        st.session_state.markdown_content = f.read()
+                    st.session_state.file_name = os.path.basename(file_path)
+                    st.session_state.last_uploaded_file_id = file_path
+                    file_dir = os.path.dirname(file_path)
+                    if file_dir:
+                        st.session_state.file_save_path = file_dir
+                        st.session_state.image_directory = file_dir
+
+                    # Start image server automatically
+                    if os.path.isdir(st.session_state.image_directory):
+                        if st.session_state.server_thread is None:
+                            port = find_free_port()
+                            st.session_state.server_port = port
+                            thread = threading.Thread(target=start_server, args=(st.session_state.image_directory, port), daemon=True)
+                            thread.start()
+                            st.session_state.server_thread = thread
+                            st.toast(f"Image server started on port {port}.")
+                    
+                    resplit()
+                except Exception as e:
+                    st.error(f"Error loading file: {e}")
+            else:
+                st.warning(f"File not found: {file_path}")
+        st.session_state.cli_file_loaded = True
+
     # --- Sidebar UI ---
     with st.sidebar:
         st.title("Markdown Slider")
@@ -82,13 +135,29 @@ def main():
             "File Save Path",
             key="file_save_path"
         )
-    
-        # Input for the image server URL
-        image_server_url = st.text_input(
-            "Image Server URL",
-            "http://127.0.0.1:8080/"
+
+        # Input for the image directory
+        st.text_input(
+            "Image Directory",
+            key="image_directory"
         )
-    
+
+        if st.button("Start/Restart Image Server"):
+            if os.path.isdir(st.session_state.image_directory):
+                if st.session_state.server_thread is None:
+                    port = find_free_port()
+                    st.session_state.server_port = port
+                    thread = threading.Thread(target=start_server, args=(st.session_state.image_directory, port), daemon=True)
+                    thread.start()
+                    st.session_state.server_thread = thread
+                    st.toast(f"Image server started on port {port}.")
+                else:
+                    st.warning("Server is already running. Restart the app to change the directory.")
+            else:
+                st.error("The specified directory does not exist.")
+
+    image_server_url = f"http://localhost:{st.session_state.server_port}" if st.session_state.server_port else None
+
     # --- Main Content Area ---
     if st.session_state.last_uploaded_file_id:
         # First convert ![[file_name]] format to ![](file_name)
@@ -96,7 +165,8 @@ def main():
         
         # Then process local image paths to be served from the specified URL
         # Regex looks for ![alt](path) where path is not a web URL
-        processed_markdown = re.sub(r"!\[(.*?)\]\(((?!https?://).*?)\)", lambda m: replace_image_path(m, image_server_url), processed_markdown)
+        if image_server_url:
+            processed_markdown = re.sub(r"!\[(.*?)\]\(((?!https?://).*?)\)", lambda m: replace_image_path(m, image_server_url), processed_markdown)
     
         # Main display tabs
         tab1, tab2, tab3 = st.tabs(["Source", "One Page", "Slides"])
@@ -104,7 +174,7 @@ def main():
 
         # Tab 1: Raw Markdown Editor
         with tab1:
-            st.text_area("Edit", key="markdown_content", height=EDIT_AREA_HEIGHT, label_visibility="collapsed")
+            st.text_area("Edit", key="markdown_content", height=600, label_visibility="collapsed")
     
         # Tab 2: Rendered view of the entire markdown file
         with tab2:
